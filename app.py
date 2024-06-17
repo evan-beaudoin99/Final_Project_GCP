@@ -1,14 +1,18 @@
+#!/usr/bin/env python3
 """
-A sample Hello World server.
+Created by: Evan Beaudoin
+Created on: June 2024
+This is the final Song Maker 3000
 """
+
 from flask import Flask, render_template, request, jsonify
 import threading
 import time
 import numpy as np
-#import scipy.fftpack
 import sounddevice as sd
 import copy
-import os
+import scipy.fftpack  
+import os 
 
 # pylint: disable=C0103
 app = Flask(__name__)
@@ -18,7 +22,7 @@ SAMPLE_FREQ = 48000 # sample frequency in Hz
 WINDOW_SIZE = 48000 # window size of the DFT in samples
 WINDOW_STEP = 12000 # step size of window
 NUM_HPS = 5 # max number of harmonic product spectrums
-POWER_THRESH = 1e-6 # tuning is activated if the signal power exceeds this threshold
+POWER_THRESH = 1e-6 # recording is activated if the signal power exceeds this threshold
 CONCERT_PITCH = 440 # defining a1
 WHITE_NOISE_THRESH = 0.2 # everything under WHITE_NOISE_THRESH*avg_energy_per_freq is cut off
 
@@ -38,22 +42,50 @@ NOTE_TO_TAB = {
 }
 
 def find_closest_note(pitch):
+    """
+    Find the closest musical note to the given pitch.
+
+    Args:
+    pitch (float): The frequency of the pitch.
+
+    Returns:
+    tuple: Closest note as a string and its pitch as a float.
+    """
     i = int(np.round(np.log2(pitch/CONCERT_PITCH)*12))
-    closest_note = ALL_NOTES[i%12] + str(4 + (i + 9) // 12)
-    closest_pitch = CONCERT_PITCH*2**(i/12)
+    closest_note = ALL_NOTES[i % 12] + str(4 + (i + 9) // 12)
+    closest_pitch = CONCERT_PITCH * 2**(i/12)
     return closest_note, closest_pitch
 
 HANN_WINDOW = np.hanning(WINDOW_SIZE)
 
 # Global variable to store detected notes and tablature
 detected_notes = []
-tuning_active = False
-tuner_thread = None
+recording_active = False
+song_maker_thread = None
 
 def note_to_tab(note):
+    """
+    Convert a musical note to its corresponding guitar tablature position.
+
+    Args:
+    note (str): The musical note.
+
+    Returns:
+    tuple: Corresponding string and fret, or None if not found.
+    """
     return NOTE_TO_TAB.get(note, None)
 
 def callback(indata, frames, time, status):
+    """
+    Callback function for real-time audio processing. Analyzes audio data to detect notes.
+
+    Args:
+    indata (numpy array): Input audio data.
+    frames (int): Number of frames in the audio data.
+    time (CData): Time information.
+    status (CallbackFlags): Status information.
+    """
+
     if not hasattr(callback, "window_samples"):
         callback.window_samples = [0 for _ in range(WINDOW_SIZE)]
     if not hasattr(callback, "noteBuffer"):
@@ -116,46 +148,63 @@ def callback(indata, frames, time, status):
     else:
         print('no input')
 
-def tuner():
-    global tuning_active
+def song_maker():
+    """
+    Function to handle real-time audio recording and note detection.
+    Runs in a separate thread.
+    """
+
+    global recording_active
     try:
         with sd.InputStream(channels=1, callback=callback, blocksize=WINDOW_STEP, samplerate=SAMPLE_FREQ):
-            while tuning_active:
+            while recording_active:
                 time.sleep(0.5)
     except Exception as e:
         print(str(e))
 
 @app.route('/')
 def index():
-    """Return a friendly HTTP greeting."""
-    # message = "This the Hello World Program!"
+    """
+    Serve the main page of the application.
 
-    """Get Cloud Run environment variables."""
+    Returns:
+    Rendered HTML template for the index page.
+    """
     service = os.environ.get('K_SERVICE', 'Unknown service')
     revision = os.environ.get('K_REVISION', 'Unknown revision')
 
-    return render_template('index.html',
-        Service=service,
-        Revision=revision)
+    return render_template('index.html', Service=service, Revision=revision)
 
 @app.route('/start', methods=['POST'])
-def start_tuner():
-    global tuning_active, tuner_thread, detected_notes
+def start_song_maker():
+    """
+    Start the song maker recording process.
+
+    Returns:
+    JSON response indicating the recording status.
+    """
+    global recording_active, song_maker_thread, detected_notes
     detected_notes = []
-    if not tuning_active:
-        tuning_active = True
-        tuner_thread = threading.Thread(target=tuner)
-        tuner_thread.start()
+    if not recording_active:
+        recording_active = True
+        song_maker_thread = threading.Thread(target=song_maker)
+        song_maker_thread.start()
     return jsonify({"status": "Recording started"})
 
 @app.route('/stop', methods=['POST'])
-def stop_tuner():
-    global tuning_active
-    tuning_active = False
-    if tuner_thread:
-        tuner_thread.join()
+def stop_song_maker():
+    """
+    Stop the song maker recording process and return detected notes.
+
+    Returns:
+    JSON response with the recording status and detected notes.
+    """
+    global recording_active
+    recording_active = False
+    if song_maker_thread:
+        song_maker_thread.join()
     notes = [{'note': note, 'string': tab[0], 'fret': tab[1]} for note, tab in detected_notes]
-    return jsonify({"status": "Tuner stopped", "notes": notes})
+    return jsonify({"status": "Stopped listening", "notes": notes})
 
 
 if __name__ == '__main__':
