@@ -1,0 +1,16 @@
+body {
+    background-color: #f8f9fa;
+}
+
+.container {
+    margin-top: 50px;
+}
+
+.btn-custom {
+    margin: 10px;
+}
+
+#tablature pre {
+    font-size: 1.2rem;
+    font-family: monospace;
+}

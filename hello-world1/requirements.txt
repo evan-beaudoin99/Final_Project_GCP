@@ -1,0 +1,5 @@
+Flask==2.3.3
+requests==2.31.0
+debugpy # Required for debugging.
+sounddevice==0.3.15
+numpy==1.16.6
